@@ -4,9 +4,7 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.*
 import android.media.session.MediaController
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewTreeObserver
 import android.view.animation.AccelerateDecelerateInterpolator
 import kotlin.math.max
 
@@ -58,8 +56,6 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     fun stopPulse() { pulseAnimator?.cancel(); pulseAnimator = null; pulse = .3f; invalidate() }
-
-    fun refreshTouchableRegion() = requestLayout()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -131,43 +127,20 @@ class CapsuleView(context: Context) : View(context) {
         paint.color = 0xFF9B8AFF.toInt(); canvas.drawLine(start, y, start + (end - start) * ratio, y, paint)
     }
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN) onUserInteraction?.invoke()
-        if (event.action != MotionEvent.ACTION_UP) return true
+    fun handleTap(x: Float, y: Float) {
         onUserInteraction?.invoke()
         if (expanded && morphProgress > .82f) {
             when {
-                event.y > card.bottom - dp(18f) && music.duration > 0 -> {
-                    val ratio = ((event.x - card.left - dp(16f)) / (card.width() - dp(32f))).coerceIn(0f, 1f)
+                y > card.bottom - dp(18f) && music.duration > 0 -> {
+                    val ratio = ((x - card.left - dp(16f)) / (card.width() - dp(32f))).coerceIn(0f, 1f)
                     controls?.seekTo((music.duration * ratio).toLong())
                 }
-                event.y < card.top + dp(76f) && event.x > card.right - dp(45f) -> controls?.skipToNext()
-                event.y < card.top + dp(76f) && event.x > card.right - dp(89f) -> if (music.playing) controls?.pause() else controls?.play()
-                event.y < card.top + dp(76f) && event.x > card.right - dp(132f) -> controls?.skipToPrevious()
+                y < card.top + dp(76f) && x > card.right - dp(45f) -> controls?.skipToNext()
+                y < card.top + dp(76f) && x > card.right - dp(89f) -> if (music.playing) controls?.pause() else controls?.play()
+                y < card.top + dp(76f) && x > card.right - dp(132f) -> controls?.skipToPrevious()
                 else -> onToggle?.invoke()
             }
         } else onToggle?.invoke()
-        performClick(); return true
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        viewTreeObserver.addOnComputeInternalInsetsListener(insetsListener)
-    }
-
-    override fun onDetachedFromWindow() {
-        if (viewTreeObserver.isAlive) viewTreeObserver.removeOnComputeInternalInsetsListener(insetsListener)
-        super.onDetachedFromWindow()
-    }
-
-    private val insetsListener = ViewTreeObserver.OnComputeInternalInsetsListener { info ->
-        computeShape()
-        info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION)
-        val pad = dp(12f).toInt()
-        info.touchableRegion.set(
-            (shape.left - pad).toInt(), (shape.top - pad).toInt(),
-            (shape.right + pad).toInt(), (shape.bottom + pad).toInt()
-        )
     }
 
     override fun performClick(): Boolean { super.performClick(); return true }

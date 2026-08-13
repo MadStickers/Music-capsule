@@ -13,6 +13,8 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.PathInterpolator
@@ -28,6 +30,7 @@ class OverlayController(
     private val overlayHeight = geometry.statusBarBottom + dp(100)
     private val overlayLeft = geometry.camera.centerX() - overlayWidth / 2
     private val view = CapsuleView(context)
+    private val touchView = View(context)
     private var attached = false
     private var expanded = false
     private var animator: ValueAnimator? = null
@@ -45,6 +48,16 @@ class OverlayController(
         )
         view.onToggle = { animateTo(!expanded) }
         view.onUserInteraction = { if (expanded) scheduleCollapse() }
+        touchView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) view.onUserInteraction?.invoke()
+            if (event.action == MotionEvent.ACTION_UP) {
+                val visualX = event.x + touchParams.x - overlayLeft
+                val visualY = event.y + touchParams.y
+                view.handleTap(visualX, visualY)
+                touchView.performClick()
+            }
+            true
+        }
     }
 
     private val params = WindowManager.LayoutParams(
@@ -54,12 +67,26 @@ class OverlayController(
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.TOP or Gravity.START
         x = overlayLeft
         y = 0
+    }
+
+    private val touchParams = WindowManager.LayoutParams(
+        dp(52), dp(52), windowType,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+        PixelFormat.TRANSLUCENT
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+        x = geometry.camera.centerX() - dp(26)
+        y = geometry.camera.centerY() - dp(26)
     }
 
     fun update(state: MusicState, controls: MediaController.TransportControls) {
@@ -74,8 +101,10 @@ class OverlayController(
         ) return
         if (!attached) {
             runCatching { wm.addView(view, params) }.onSuccess {
-                attached = true
-                if (view.music.playing) view.startPulse()
+                runCatching { wm.addView(touchView, touchParams) }.onSuccess {
+                    attached = true
+                    if (view.music.playing) view.startPulse()
+                }.onFailure { runCatching { wm.removeView(view) } }
             }
         }
     }
@@ -84,7 +113,10 @@ class OverlayController(
         main.removeCallbacks(collapseAfterTouch)
         animator?.cancel()
         animator = null
-        if (attached) runCatching { wm.removeView(view) }
+        if (attached) {
+            runCatching { wm.removeView(touchView) }
+            runCatching { wm.removeView(view) }
+        }
         attached = false
         expanded = false
         view.expanded = false
@@ -100,8 +132,6 @@ class OverlayController(
         animator?.cancel()
         expanded = open
         view.expanded = open
-        // Keep the larger previous touch region during the morph itself.
-        view.refreshTouchableRegion()
         val end = if (open) 1f else 0f
         animator = ValueAnimator.ofFloat(view.morphProgress, end).apply {
             duration = if (open) 420L else 360L
@@ -112,8 +142,10 @@ class OverlayController(
                 private var cancelled = false
                 override fun onAnimationCancel(animation: Animator) { cancelled = true }
                 override fun onAnimationEnd(animation: Animator) {
-                    view.refreshTouchableRegion()
-                    if (!cancelled && open) scheduleCollapse()
+                    if (!cancelled) {
+                        updateTouchWindow(open)
+                        if (open) scheduleCollapse()
+                    }
                     animator = null
                 }
             })
@@ -124,6 +156,22 @@ class OverlayController(
     private fun scheduleCollapse() {
         main.removeCallbacks(collapseAfterTouch)
         main.postDelayed(collapseAfterTouch, 2_000L)
+    }
+
+    private fun updateTouchWindow(open: Boolean) {
+        if (!attached) return
+        if (open) {
+            touchParams.width = overlayWidth
+            touchParams.height = dp(100)
+            touchParams.x = overlayLeft
+            touchParams.y = geometry.statusBarBottom + dp(4)
+        } else {
+            touchParams.width = dp(52)
+            touchParams.height = dp(52)
+            touchParams.x = geometry.camera.centerX() - dp(26)
+            touchParams.y = geometry.camera.centerY() - dp(26)
+        }
+        runCatching { wm.updateViewLayout(touchView, touchParams) }
     }
 
     private data class Geometry(val screenWidth: Int, val camera: Rect, val statusBarBottom: Int)
