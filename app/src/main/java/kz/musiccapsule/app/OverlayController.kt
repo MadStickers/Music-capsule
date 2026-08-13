@@ -1,6 +1,7 @@
 package kz.musiccapsule.app
 
-import android.animation.ValueAnimator
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -33,7 +34,7 @@ class OverlayController(
     private val view = CapsuleView(context)
     private var attached = false
     private var expanded = false
-    private var animator: ValueAnimator? = null
+    private var animating = false
     private val collapseAfterTouch = Runnable { animateTo(false) }
 
     init {
@@ -69,6 +70,7 @@ class OverlayController(
     fun update(state: MusicState, controls: MediaController.TransportControls) {
         view.music = state
         view.controls = controls
+        if (state.playing) view.startPulse() else view.stopPulse()
     }
 
     fun show() {
@@ -79,14 +81,16 @@ class OverlayController(
             resetCollapsedGeometry()
             runCatching { wm.addView(view, params) }.onSuccess {
                 attached = true
-                view.startPulse()
+                if (view.music.playing) view.startPulse()
             }
         }
     }
 
     fun hide() {
         main.removeCallbacks(collapseAfterTouch)
-        animator?.cancel()
+        view.animate().setListener(null)
+        view.animate().cancel()
+        animating = false
         if (attached) runCatching { wm.removeView(view) }
         attached = false
         expanded = false
@@ -99,38 +103,62 @@ class OverlayController(
     fun destroy() = hide()
 
     private fun animateTo(open: Boolean) {
-        if (!attached || (open == expanded && animator?.isRunning == true)) return
+        if (!attached || animating || open == expanded) return
         main.removeCallbacks(collapseAfterTouch)
-        animator?.cancel()
-        val startWidth = params.width
-        val startHeight = params.height
-        val startY = params.y
-        val endWidth = if (open) expandedWidth else collapsedWidth
-        val endHeight = if (open) expandedHeight else collapsedHeight
-        val endY = if (open) expandedY else cameraTop
+        view.animate().setListener(null)
+        view.animate().cancel()
+        animating = true
         expanded = open
         view.expanded = open
-        animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = if (open) 520L else 420L
-            interpolator = PathInterpolator(0.18f, 0.88f, 0.22f, 1f)
-            addUpdateListener { animation ->
-                val t = animation.animatedValue as Float
-                val width = lerp(startWidth, endWidth, t)
-                val height = lerp(startHeight, endHeight, t)
-                params.width = width
-                params.height = height
-                params.x = cameraCenterX - width / 2
-                params.y = lerp(startY, endY, t)
-                view.cameraCenterY = (cameraCenterY - params.y).toFloat()
-                view.reveal = (width - collapsedWidth).toFloat() /
-                    (expandedWidth - collapsedWidth).coerceAtLeast(1)
-                runCatching { wm.updateViewLayout(view, params) }
-            }
-            doOnEnd {
-                view.reveal = if (open) 1f else 0f
-                if (open) scheduleCollapse()
-            }
-            start()
+
+        if (open) {
+            params.width = expandedWidth
+            params.height = expandedHeight
+            params.x = cameraCenterX - expandedWidth / 2
+            params.y = expandedY
+            runCatching { wm.updateViewLayout(view, params) }
+
+            view.reveal = 1f
+            view.pivotX = expandedWidth / 2f
+            view.pivotY = 0f
+            view.scaleX = collapsedWidth.toFloat() / expandedWidth
+            view.scaleY = collapsedHeight.toFloat() / expandedHeight
+            view.translationY = -dp(10).toFloat()
+            view.alpha = .25f
+            view.animate()
+                .scaleX(1f).scaleY(1f).translationY(0f).alpha(1f)
+                .setDuration(360L)
+                .setInterpolator(PathInterpolator(.16f, 1f, .3f, 1f))
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        animating = false
+                        view.animate().setListener(null)
+                        scheduleCollapse()
+                    }
+                }).start()
+        } else {
+            view.pivotX = expandedWidth / 2f
+            view.pivotY = 0f
+            view.animate()
+                .scaleX(collapsedWidth.toFloat() / expandedWidth)
+                .scaleY(collapsedHeight.toFloat() / expandedHeight)
+                .translationY(-dp(10).toFloat())
+                .alpha(.18f)
+                .setDuration(260L)
+                .setInterpolator(PathInterpolator(.4f, 0f, .7f, .2f))
+                .setListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        resetCollapsedGeometry()
+                        runCatching { wm.updateViewLayout(view, params) }
+                        view.reveal = 0f
+                        view.scaleX = 1f
+                        view.scaleY = 1f
+                        view.translationY = 0f
+                        view.alpha = 1f
+                        animating = false
+                        view.animate().setListener(null)
+                    }
+                }).start()
         }
     }
 
@@ -166,14 +194,5 @@ class OverlayController(
         return ScreenGeometry(windowMetrics.bounds.width(), centered, statusBarBottom)
     }
 
-    private fun ValueAnimator.doOnEnd(block: () -> Unit) {
-        addListener(object : android.animation.AnimatorListenerAdapter() {
-            private var cancelled = false
-            override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
-            override fun onAnimationEnd(animation: android.animation.Animator) { if (!cancelled) block() }
-        })
-    }
-
-    private fun lerp(start: Int, end: Int, t: Float) = (start + (end - start) * t).toInt()
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
 }

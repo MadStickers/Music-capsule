@@ -25,6 +25,10 @@ class CapsuleView(context: Context) : View(context) {
     var onToggle: (() -> Unit)? = null
     var onUserInteraction: (() -> Unit)? = null
 
+    init {
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+    }
+
     fun startPulse() {
         if (pulseAnimator?.isRunning == true) return
         pulseAnimator = ValueAnimator.ofFloat(.28f, 1f).apply {
@@ -37,21 +41,23 @@ class CapsuleView(context: Context) : View(context) {
         }
     }
 
-    fun stopPulse() { pulseAnimator?.cancel(); pulseAnimator = null }
+    fun stopPulse() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+        pulse = .35f
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        setLayerType(LAYER_TYPE_SOFTWARE, paint)
         if (reveal < .02f) {
             // Only a subtle camera-sized mask; the whole View remains a large touch target.
             paint.color = Color.BLACK
             canvas.drawCircle(width / 2f, cameraCenterY, dp(7f), paint)
         } else {
             paint.color = Color.BLACK
-            paint.setShadowLayer(dp(12f), 0f, dp(4f), 0x70000000)
             val radius = minOf(dp(28f), height / 2f)
             canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), radius, radius, paint)
-            paint.clearShadowLayer()
         }
         if (reveal < .82f) drawPulseDot(canvas)
         if (reveal > .08f) {
@@ -63,12 +69,12 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun drawPulseDot(canvas: Canvas) {
-        val cx = width / 2f + dp(12f)
+        val cx = width / 2f + dp(18f)
         val cy = cameraCenterY
-        paint.color = 0x408F7CFF
-        canvas.drawCircle(cx, cy, dp(2.8f) + dp(1.8f) * pulse, paint)
-        paint.color = 0xFF9B8AFF.toInt()
-        canvas.drawCircle(cx, cy, dp(1.5f) + dp(.5f) * pulse, paint)
+        paint.color = 0x3831D7FF
+        canvas.drawCircle(cx, cy, dp(2.7f) + dp(1.1f) * pulse, paint)
+        paint.color = 0xFF31D7FF.toInt()
+        canvas.drawCircle(cx, cy, dp(1.4f) + dp(.35f) * pulse, paint)
     }
 
     private fun drawExpandedContent(canvas: Canvas) {

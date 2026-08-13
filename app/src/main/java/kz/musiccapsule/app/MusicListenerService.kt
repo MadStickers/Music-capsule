@@ -3,6 +3,7 @@ package kz.musiccapsule.app
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -24,7 +25,7 @@ class MusicListenerService : NotificationListenerService() {
     }
     private val progressTick = object : Runnable {
         override fun run() {
-            publishState()
+            chooseSession()
             main.postDelayed(this, 500L)
         }
     }
@@ -57,7 +58,9 @@ class MusicListenerService : NotificationListenerService() {
         val available = list ?: runCatching {
             sessions.getActiveSessions(ComponentName(this, javaClass))
         }.getOrDefault(emptyList())
-        val next = available.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+        val next = available
+            .filter { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            .maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
             ?: available.firstOrNull { it.metadata != null }
         if (next?.sessionToken != controller?.sessionToken) {
             controller?.unregisterCallback(controllerCallback)
@@ -77,7 +80,8 @@ class MusicListenerService : NotificationListenerService() {
         }
         val metadata = current.metadata
         val playback = current.playbackState
-        val isPlaying = playback?.state == PlaybackState.STATE_PLAYING
+        val audioActive = (getSystemService(Context.AUDIO_SERVICE) as AudioManager).isMusicActive
+        val isPlaying = playback?.state == PlaybackState.STATE_PLAYING && audioActive
         val position = if (isPlaying && playback != null) {
             val elapsed = android.os.SystemClock.elapsedRealtime() - playback.lastPositionUpdateTime
             (playback.position + elapsed * playback.playbackSpeed).toLong().coerceAtLeast(0L)
