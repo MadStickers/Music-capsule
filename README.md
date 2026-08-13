@@ -29,7 +29,7 @@ Grant the requested permissions in this order:
 2. Notification access (needed by Android to expose active MediaSession controllers).
 3. Enable the Music Capsule accessibility service. It is used only to place a clickable overlay above the status bar; it cannot retrieve window content.
 
-Start playback in any properly implemented Android media player. A small pulsing dot appears beside the real camera cutout. Tap it and the capsule moves below the status bar while expanding equally to both sides. The capsule folds back two seconds after the last touch. When playback is paused, it disappears after five seconds.
+Start playback in any properly implemented Android media player. A small pulsing dot appears beside the camera mask. Tap it and the same black circle continuously morphs into a capsule below the status bar. It morphs back into the camera circle two seconds after the last touch. No overlay window is moved or resized during this animation. When playback is paused, pulsing stops immediately and the compact island disappears after five seconds.
 
 ## Notes
 
