@@ -59,6 +59,7 @@ class OverlayController(
             cardBottom = (geometry.statusBarBottom + dp(100)).toFloat()
         )
         view.verticalOffset = verticalOffset.toFloat()
+        view.controlMode = CapsulePreferences.controlMode(context)
         view.onToggle = { animateTo(!expanded) }
         view.onUserInteraction = { if (expanded) scheduleCollapse() }
         touchView.setOnTouchListener { _, event ->
@@ -87,7 +88,7 @@ class OverlayController(
                         val dx = event.rawX - downRawX
                         val dy = event.rawY - downRawY
                         when {
-                            expanded && kotlin.math.abs(dx) > dp(48) && kotlin.math.abs(dx) > kotlin.math.abs(dy) -> {
+                            expanded && view.controlMode == CapsulePreferences.ControlMode.GESTURES && kotlin.math.abs(dx) > dp(48) && kotlin.math.abs(dx) > kotlin.math.abs(dy) -> {
                                 if (dx < 0) view.controls?.skipToNext() else view.controls?.skipToPrevious()
                                 scheduleCollapse()
                             }
@@ -145,13 +146,13 @@ class OverlayController(
         if (state.playing) view.startPulse() else view.stopPulse()
     }
 
-    fun updateTimer(timer: TimerState?) { view.timer = timer }
-
     fun applyVerticalOffsetDp(value: Int) {
         verticalOffset = dp(value).coerceIn(0, maxVerticalOffset)
         view.verticalOffset = verticalOffset.toFloat()
         updateTouchWindow(expanded)
     }
+
+    fun applyControlMode(value: CapsulePreferences.ControlMode) { view.controlMode = value }
 
     fun show() {
         if (windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY &&

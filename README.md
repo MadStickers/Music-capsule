@@ -31,7 +31,7 @@ Grant the requested permissions in this order:
 
 Start playback in any properly implemented Android media player. A small pulsing dot appears beside the camera mask. Tap it and the same black circle continuously morphs into a capsule below the status bar. It morphs back into the camera circle two seconds after the last touch. No overlay window is moved or resized during this animation. When playback is paused, pulsing stops immediately and the compact island disappears after five seconds.
 
-Version 10 adds Material 3 settings, a saved vertical position, configurable auto-collapse delay, horizontal track swipes, swipe-up collapse, long-press dragging, a single Play/Pause button, and basic ongoing system timer display.
+Version 11 focuses only on music. It adds adaptive Material 3 settings and three control modes: gestures with Play/Pause, full playback buttons, or display-only system control. It also keeps saved vertical position, configurable auto-collapse, swipe-up collapse, and long-press dragging.
 
 ## Notes
 

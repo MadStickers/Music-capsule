@@ -2,7 +2,6 @@ package kz.musiccapsule.app
 
 import android.content.ComponentName
 import android.content.Context
-import android.app.Notification
 import android.graphics.Bitmap
 import android.media.MediaMetadata
 import android.media.session.MediaController
@@ -11,7 +10,6 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.service.notification.NotificationListenerService
-import android.service.notification.StatusBarNotification
 
 class MusicListenerService : NotificationListenerService() {
     private val main = Handler(Looper.getMainLooper())
@@ -19,11 +17,10 @@ class MusicListenerService : NotificationListenerService() {
     private var controller: MediaController? = null
     private var lastPlaying = false
     private var pauseHideScheduled = false
-    private var timerKey: String? = null
 
     private val hideAfterPause = Runnable {
         pauseHideScheduled = false
-        if (!MusicOverlayBridge.hasTimer()) MusicOverlayBridge.hide()
+        MusicOverlayBridge.hide()
     }
     private val progressTick = object : Runnable {
         override fun run() {
@@ -56,40 +53,6 @@ class MusicListenerService : NotificationListenerService() {
         super.onListenerDisconnected()
     }
 
-    override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        val item = sbn ?: return
-        val notification = item.notification
-        val ongoing = notification.flags and Notification.FLAG_ONGOING_EVENT != 0
-        val clockLike = notification.category == Notification.CATEGORY_ALARM ||
-            item.packageName.contains("clock", ignoreCase = true)
-        if (!ongoing || !clockLike) return
-        val extras = notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-            ?.takeIf { it.isNotBlank() } ?: "Таймер"
-        val value = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-            ?.takeIf { it.isNotBlank() }
-            ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty()
-        timerKey = item.key
-        val showChronometer = extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false)
-        val countDown = extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN, false)
-        MusicOverlayBridge.updateTimer(
-            TimerState(
-                sourceKey = item.key,
-                title = title,
-                value = value,
-                chronometerTimeMillis = notification.`when`.takeIf { showChronometer && it > 0L },
-                countDown = countDown
-            )
-        )
-    }
-
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        if (sbn?.key == timerKey) {
-            timerKey = null
-            MusicOverlayBridge.updateTimer(null)
-        }
-    }
-
     private fun chooseSession(list: List<MediaController>? = null) {
         val available = list ?: runCatching {
             sessions.getActiveSessions(ComponentName(this, javaClass))
@@ -113,7 +76,7 @@ class MusicListenerService : NotificationListenerService() {
             main.removeCallbacks(hideAfterPause)
             pauseHideScheduled = false
             lastPlaying = false
-            if (!MusicOverlayBridge.hasTimer()) MusicOverlayBridge.hide()
+            MusicOverlayBridge.hide()
             return
         }
         val metadata = current.metadata

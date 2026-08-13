@@ -20,8 +20,8 @@ android {
         applicationId = "kz.musiccapsule.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 10
-        versionName = "10.0.0"
+        versionCode = 11
+        versionName = "11.0.0"
 
         signingConfig = signingConfigs.getByName("debug")
     }

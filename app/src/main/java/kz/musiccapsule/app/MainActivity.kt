@@ -16,6 +16,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.slider.Slider
+import com.google.android.material.button.MaterialButtonToggleGroup
 
 class MainActivity : AppCompatActivity() {
     private lateinit var overlayStatus: TextView
@@ -47,12 +48,12 @@ class MainActivity : AppCompatActivity() {
             text = "Music Capsule"
             textSize = 34f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }, matchWrap(dp(54)))
+        }, wrapMatch().apply { bottomMargin = dp(8) })
         root.addView(TextView(this).apply {
-            text = "Музыка и живые активности вокруг камеры"
+            text = "Музыкальный остров вокруг камеры"
             textSize = 16f
             alpha = .72f
-        }, matchWrap(dp(44)))
+        }, wrapMatch().apply { bottomMargin = dp(8) })
 
         root.addView(sectionTitle("Разрешения"))
         overlayStatus = TextView(this)
@@ -60,7 +61,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         })
         mediaStatus = TextView(this)
-        root.addView(permissionCard("Музыка и таймер", "Читает только системные медиасессии и активность часов.", mediaStatus, "Открыть") {
+        root.addView(permissionCard("Доступ к музыке", "Используется только для чтения активной MediaSession и управления воспроизведением.", mediaStatus, "Открыть") {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         })
         accessibilityStatus = TextView(this)
@@ -86,6 +87,33 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(sectionTitle("Поведение"))
+        root.addView(settingCard("Управление музыкой", "Выберите жесты, обычные кнопки или только системное управление.") {
+            val group = MaterialButtonToggleGroup(this@MainActivity).apply {
+                isSingleSelection = true
+                isSelectionRequired = true
+            }
+            val gestures = modeButton("Жесты")
+            val buttons = modeButton("Кнопки")
+            val system = modeButton("Системное")
+            group.addView(gestures); group.addView(buttons); group.addView(system)
+            val selected = when (CapsulePreferences.controlMode(this@MainActivity)) {
+                CapsulePreferences.ControlMode.GESTURES -> gestures.id
+                CapsulePreferences.ControlMode.BUTTONS -> buttons.id
+                CapsulePreferences.ControlMode.SYSTEM -> system.id
+            }
+            group.check(selected)
+            group.addOnButtonCheckedListener { _, checkedId, isChecked ->
+                if (!isChecked) return@addOnButtonCheckedListener
+                val mode = when (checkedId) {
+                    buttons.id -> CapsulePreferences.ControlMode.BUTTONS
+                    system.id -> CapsulePreferences.ControlMode.SYSTEM
+                    else -> CapsulePreferences.ControlMode.GESTURES
+                }
+                CapsulePreferences.setControlMode(this@MainActivity, mode)
+                MusicOverlayBridge.applyControlMode(mode)
+            }
+            addView(group, wrapMatch().apply { topMargin = dp(8) })
+        })
         root.addView(settingCard("Автосворачивание", "Время после последнего касания.") {
             val valueLabel = TextView(this@MainActivity).apply { gravity = Gravity.CENTER; textSize = 15f }
             val slider = Slider(this@MainActivity).apply {
@@ -101,8 +129,8 @@ class MainActivity : AppCompatActivity() {
             addView(slider, matchWrap(dp(52)))
         })
 
-        root.addView(sectionTitle("Жесты"))
-        root.addView(infoCard("Тап — раскрыть · свайп влево/вправо — трек · свайп вверх — свернуть · удержание — переместить"))
+        root.addView(sectionTitle("Подсказка"))
+        root.addView(infoCard("В режиме жестов: свайп влево или вправо переключает трек, свайп вверх сворачивает остров. Долгое удержание компактного острова включает перемещение."))
 
         return ScrollView(this).apply { isFillViewport = true; addView(root) }
     }
@@ -110,7 +138,7 @@ class MainActivity : AppCompatActivity() {
     private fun permissionCard(title: String, body: String, statusView: TextView, buttonText: String, action: () -> Unit): View =
         settingCard(title, body) {
             statusView.textSize = 14f; statusView.alpha = .8f
-            addView(statusView, matchWrap(dp(34)))
+            addView(statusView, wrapMatch().apply { topMargin = dp(10); bottomMargin = dp(8) })
             addView(MaterialButton(this@MainActivity).apply { text = buttonText; setOnClickListener { action() } }, matchWrap(dp(50)))
         }
 
@@ -120,8 +148,8 @@ class MainActivity : AppCompatActivity() {
             strokeWidth = dp(1)
             val column = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(16))
-                addView(TextView(this@MainActivity).apply { text = title; textSize = 18f; setTypeface(typeface, android.graphics.Typeface.BOLD) }, matchWrap(dp(30)))
-                addView(TextView(this@MainActivity).apply { text = body; textSize = 14f; alpha = .7f }, matchWrap(dp(44)))
+                addView(TextView(this@MainActivity).apply { text = title; textSize = 18f; setTypeface(typeface, android.graphics.Typeface.BOLD) }, wrapMatch())
+                addView(TextView(this@MainActivity).apply { text = body; textSize = 14f; alpha = .7f }, wrapMatch().apply { topMargin = dp(6); bottomMargin = dp(4) })
                 content()
             }
             addView(column)
@@ -129,10 +157,17 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun infoCard(textValue: String): View = settingCard("Управление", textValue) {}
+    private fun modeButton(label: String) = MaterialButton(this).apply {
+        id = View.generateViewId(); text = label; isCheckable = true
+        layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+        setPadding(dp(4), 0, dp(4), 0)
+        textSize = 12f
+    }
     private fun sectionTitle(value: String) = TextView(this).apply { text = value; textSize = 14f; alpha = .7f; setPadding(dp(4), dp(18), 0, dp(10)) }
     private fun status(enabled: Boolean) = if (enabled) "● Включено" else "○ Требуется доступ"
     private fun isListenerEnabled() = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")?.contains(packageName) == true
     private fun isAccessibilityEnabled() = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)?.contains("$packageName/${CapsuleAccessibilityService::class.java.name}") == true
     private fun matchWrap(height: Int) = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
+    private fun wrapMatch() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
