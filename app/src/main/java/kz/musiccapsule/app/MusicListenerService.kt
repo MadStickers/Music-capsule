@@ -3,7 +3,6 @@ package kz.musiccapsule.app
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
-import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -32,7 +31,7 @@ class MusicListenerService : NotificationListenerService() {
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) = publishState()
-        override fun onPlaybackStateChanged(state: PlaybackState?) = publishState()
+        override fun onPlaybackStateChanged(state: PlaybackState?) = chooseSession()
         override fun onSessionDestroyed() = chooseSession()
     }
 
@@ -59,9 +58,11 @@ class MusicListenerService : NotificationListenerService() {
             sessions.getActiveSessions(ComponentName(this, javaClass))
         }.getOrDefault(emptyList())
         val next = available
-            .filter { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            .filter { isActivePlayback(it.playbackState?.state) }
             .maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
-            ?: available.firstOrNull { it.metadata != null }
+            ?: available
+                .filter { it.metadata != null }
+                .maxByOrNull { it.playbackState?.lastPositionUpdateTime ?: 0L }
         if (next?.sessionToken != controller?.sessionToken) {
             controller?.unregisterCallback(controllerCallback)
             controller = next
@@ -80,8 +81,7 @@ class MusicListenerService : NotificationListenerService() {
         }
         val metadata = current.metadata
         val playback = current.playbackState
-        val audioActive = (getSystemService(Context.AUDIO_SERVICE) as AudioManager).isMusicActive
-        val isPlaying = playback?.state == PlaybackState.STATE_PLAYING && audioActive
+        val isPlaying = isActivePlayback(playback?.state)
         val position = if (isPlaying && playback != null) {
             val elapsed = android.os.SystemClock.elapsedRealtime() - playback.lastPositionUpdateTime
             (playback.position + elapsed * playback.playbackSpeed).toLong().coerceAtLeast(0L)
@@ -107,5 +107,12 @@ class MusicListenerService : NotificationListenerService() {
             main.postDelayed(hideAfterPause, 5_000L)
         }
         lastPlaying = isPlaying
+    }
+
+    private fun isActivePlayback(state: Int?): Boolean = when (state) {
+        PlaybackState.STATE_PLAYING,
+        PlaybackState.STATE_BUFFERING,
+        PlaybackState.STATE_CONNECTING -> true
+        else -> false
     }
 }
