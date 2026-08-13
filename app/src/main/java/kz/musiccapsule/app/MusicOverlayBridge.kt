@@ -8,6 +8,7 @@ object MusicOverlayBridge {
     private var overlay: OverlayController? = null
     private var state: MusicState? = null
     private var controls: MediaController.TransportControls? = null
+    private var timer: TimerState? = null
 
     fun attach(service: AccessibilityService) {
         overlay?.destroy()
@@ -26,13 +27,30 @@ object MusicOverlayBridge {
         publishLatest()
     }
 
+    fun updateTimer(newTimer: TimerState?) {
+        timer = newTimer
+        overlay?.updateTimer(newTimer)
+        if (newTimer != null) overlay?.show()
+        else {
+            publishLatest()
+            if (state?.playing != true) overlay?.hide()
+        }
+    }
+
+    fun hasTimer(): Boolean = timer != null
+
     fun show() = overlay?.show()
     fun hide() = overlay?.hide()
 
+    fun applyVerticalOffsetDp(value: Int) = overlay?.applyVerticalOffsetDp(value)
+
     private fun publishLatest() {
-        val currentState = state ?: return
-        val currentControls = controls ?: return
-        overlay?.update(currentState, currentControls)
-        if (currentState.playing) overlay?.show()
+        overlay?.updateTimer(timer)
+        val currentState = state
+        val currentControls = controls
+        if (currentState != null && currentControls != null) {
+            overlay?.update(currentState, currentControls)
+        }
+        if (currentState?.playing == true || timer != null) overlay?.show()
     }
 }

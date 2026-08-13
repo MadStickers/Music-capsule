@@ -18,11 +18,15 @@ class CapsuleView(context: Context) : View(context) {
     private var cameraX = 0f
     private var cameraY = 0f
     private var cameraRadius = dp(7f)
+    private var baseCardTop = 0f
+    private var baseCardBottom = 0f
     private var pulse = .35f
     private var pulseAnimator: ValueAnimator? = null
 
     var music = MusicState(); set(value) { field = value; invalidate() }
     var controls: MediaController.TransportControls? = null
+    var timer: TimerState? = null; set(value) { field = value; invalidate() }
+    var verticalOffset = 0f; set(value) { field = value; invalidate() }
     var expanded = false
     var morphProgress = 0f; set(value) {
         field = value.coerceIn(0f, 1f)
@@ -40,6 +44,8 @@ class CapsuleView(context: Context) : View(context) {
         this.cameraX = cameraX
         this.cameraY = cameraY
         this.cameraRadius = cameraRadius
+        baseCardTop = cardTop
+        baseCardBottom = cardBottom
         card.set(cardLeft, cardTop, cardRight, cardBottom)
     }
 
@@ -59,15 +65,20 @@ class CapsuleView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        card.top = baseCardTop + verticalOffset
+        card.bottom = baseCardBottom + verticalOffset
         computeShape()
         paint.color = Color.BLACK
-        val radius = lerp(cameraRadius, dp(28f), morphProgress)
+        val compactRadius = if (verticalOffset < dp(2f)) cameraRadius else dp(11f)
+        val radius = lerp(compactRadius, dp(28f), morphProgress)
         canvas.drawRoundRect(shape, radius, radius, paint)
 
         val contentAlpha = smoothStep(.42f, .78f, morphProgress)
         if (contentAlpha > 0f) {
             canvas.saveLayerAlpha(card.left, card.top, card.right, card.bottom, (255 * contentAlpha).toInt())
-            drawArtwork(canvas); drawLabels(canvas); drawButtons(canvas); drawProgress(canvas)
+            if (timer != null) drawTimer(canvas) else {
+                drawArtwork(canvas); drawLabels(canvas); drawPlayPause(canvas); drawProgress(canvas)
+            }
             canvas.restore()
         }
 
@@ -76,7 +87,9 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun computeShape() {
-        val start = RectF(cameraX - cameraRadius, cameraY - cameraRadius, cameraX + cameraRadius, cameraY + cameraRadius)
+        val compactY = cameraY + verticalOffset
+        val compactRadius = if (verticalOffset < dp(2f)) cameraRadius else dp(11f)
+        val start = RectF(cameraX - compactRadius, compactY - compactRadius, cameraX + compactRadius, compactY + compactRadius)
         shape.set(
             lerp(start.left, card.left, morphProgress),
             lerp(start.top, card.top, morphProgress),
@@ -86,11 +99,13 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun drawPulseDot(canvas: Canvas, alpha: Float) {
-        val cx = cameraX + cameraRadius + dp(11f)
+        val compactY = cameraY + verticalOffset
+        val compactRadius = if (verticalOffset < dp(2f)) cameraRadius else dp(11f)
+        val cx = cameraX + compactRadius + dp(11f)
         paint.color = Color.argb((0x38 * alpha).toInt(), 49, 215, 255)
-        canvas.drawCircle(cx, cameraY, dp(2.7f) + dp(1.1f) * pulse, paint)
+        canvas.drawCircle(cx, compactY, dp(2.7f) + dp(1.1f) * pulse, paint)
         paint.color = Color.argb((255 * alpha).toInt(), 49, 215, 255)
-        canvas.drawCircle(cx, cameraY, dp(1.4f) + dp(.35f) * pulse, paint)
+        canvas.drawCircle(cx, compactY, dp(1.4f) + dp(.35f) * pulse, paint)
     }
 
     private fun drawArtwork(canvas: Canvas) {
@@ -112,11 +127,24 @@ class CapsuleView(context: Context) : View(context) {
         canvas.drawText(ellipsize(music.artist.ifBlank { "Сейчас играет" }, textPaint, maxWidth), x, card.top + dp(55f), textPaint)
     }
 
-    private fun drawButtons(canvas: Canvas) {
-        val cy = card.top + dp(39f); val nextX = card.right - dp(24f); val playX = card.right - dp(67f); val prevX = card.right - dp(110f)
-        drawPrevious(canvas, prevX, cy)
-        if (music.playing) drawPause(canvas, playX, cy) else drawPlay(canvas, playX, cy)
-        drawNext(canvas, nextX, cy)
+    private fun drawPlayPause(canvas: Canvas) {
+        val x = card.right - dp(43f); val y = card.top + dp(39f)
+        paint.color = 0xFF24242B.toInt()
+        canvas.drawCircle(x, y, dp(22f), paint)
+        if (music.playing) drawPause(canvas, x, y) else drawPlay(canvas, x, y)
+    }
+
+    private fun drawTimer(canvas: Canvas) {
+        val current = timer ?: return
+        boldPaint.color = Color.WHITE; boldPaint.textSize = dp(18f)
+        textPaint.color = 0xFFA3A3B1.toInt(); textPaint.textSize = dp(13f)
+        canvas.drawText(current.title, card.left + dp(22f), card.top + dp(39f), boldPaint)
+        val shownValue = current.chronometerTimeMillis?.let { base ->
+            val delta = if (current.countDown) base - System.currentTimeMillis() else System.currentTimeMillis() - base
+            formatDuration(delta.coerceAtLeast(0L))
+        } ?: current.value
+        canvas.drawText(shownValue, card.left + dp(22f), card.top + dp(64f), textPaint)
+        if (current.chronometerTimeMillis != null) postInvalidateDelayed(500L)
     }
 
     private fun drawProgress(canvas: Canvas) {
@@ -135,10 +163,8 @@ class CapsuleView(context: Context) : View(context) {
                     val ratio = ((x - card.left - dp(16f)) / (card.width() - dp(32f))).coerceIn(0f, 1f)
                     controls?.seekTo((music.duration * ratio).toLong())
                 }
-                y < card.top + dp(76f) && x > card.right - dp(45f) -> controls?.skipToNext()
-                y < card.top + dp(76f) && x > card.right - dp(89f) -> if (music.playing) controls?.pause() else controls?.play()
-                y < card.top + dp(76f) && x > card.right - dp(132f) -> controls?.skipToPrevious()
-                else -> onToggle?.invoke()
+                timer == null && y < card.top + dp(76f) && x > card.right - dp(86f) ->
+                    if (music.playing) controls?.pause() else controls?.play()
             }
         } else onToggle?.invoke()
     }
@@ -146,10 +172,9 @@ class CapsuleView(context: Context) : View(context) {
     override fun performClick(): Boolean { super.performClick(); return true }
     private fun drawPlay(c:Canvas,x:Float,y:Float){paint.color=Color.WHITE;c.drawPath(Path().apply{moveTo(x-dp(5f),y-dp(7f));lineTo(x+dp(7f),y);lineTo(x-dp(5f),y+dp(7f));close()},paint)}
     private fun drawPause(c:Canvas,x:Float,y:Float){paint.color=Color.WHITE;c.drawRoundRect(x-dp(6f),y-dp(7f),x-dp(2f),y+dp(7f),dp(1f),dp(1f),paint);c.drawRoundRect(x+dp(2f),y-dp(7f),x+dp(6f),y+dp(7f),dp(1f),dp(1f),paint)}
-    private fun drawPrevious(c:Canvas,x:Float,y:Float){paint.color=Color.WHITE;c.drawRect(x-dp(7f),y-dp(7f),x-dp(5f),y+dp(7f),paint);c.drawPath(Path().apply{moveTo(x+dp(6f),y-dp(7f));lineTo(x-dp(5f),y);lineTo(x+dp(6f),y+dp(7f));close()},paint)}
-    private fun drawNext(c:Canvas,x:Float,y:Float){paint.color=Color.WHITE;c.drawRect(x+dp(5f),y-dp(7f),x+dp(7f),y+dp(7f),paint);c.drawPath(Path().apply{moveTo(x-dp(6f),y-dp(7f));lineTo(x+dp(5f),y);lineTo(x-dp(6f),y+dp(7f));close()},paint)}
     private fun ellipsize(s:String,p:Paint,maxW:Float):String{if(p.measureText(s)<=maxW)return s;var out=s;while(out.length>1&&p.measureText("$out…")>maxW)out=out.dropLast(1);return "$out…"}
     private fun smoothStep(a:Float,b:Float,x:Float):Float{val t=((x-a)/(b-a)).coerceIn(0f,1f);return t*t*(3f-2f*t)}
+    private fun formatDuration(ms:Long):String{val total=ms/1000;val h=total/3600;val m=(total%3600)/60;val s=total%60;return if(h>0)"%d:%02d:%02d".format(h,m,s) else "%02d:%02d".format(m,s)}
     private fun lerp(a:Float,b:Float,t:Float)=a+(b-a)*t
     private fun dp(v:Float)=v*density
 }

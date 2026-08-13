@@ -26,14 +26,26 @@ class OverlayController(
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
     private val geometry = readGeometry()
+    private val maxVerticalOffset = geometry.screenHeight / 4
+    private var verticalOffset = dp(CapsulePreferences.verticalOffsetDp(context)).coerceIn(0, maxVerticalOffset)
     private val overlayWidth = minOf(dp(352), geometry.screenWidth - dp(12))
-    private val overlayHeight = geometry.statusBarBottom + dp(100)
+    private val overlayHeight = geometry.statusBarBottom + dp(100) + maxVerticalOffset
     private val overlayLeft = geometry.camera.centerX() - overlayWidth / 2
     private val view = CapsuleView(context)
     private val touchView = View(context)
     private var attached = false
     private var expanded = false
     private var animator: ValueAnimator? = null
+    private var downRawX = 0f
+    private var downRawY = 0f
+    private var downOffset = 0
+    private var dragging = false
+    private val beginDrag = Runnable {
+        if (!expanded) {
+            dragging = true
+            touchView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        }
+    }
     private val collapseAfterTouch = Runnable { animateTo(false) }
 
     init {
@@ -44,17 +56,55 @@ class OverlayController(
             cardLeft = 0f,
             cardTop = (geometry.statusBarBottom + dp(4)).toFloat(),
             cardRight = overlayWidth.toFloat(),
-            cardBottom = overlayHeight.toFloat()
+            cardBottom = (geometry.statusBarBottom + dp(100)).toFloat()
         )
+        view.verticalOffset = verticalOffset.toFloat()
         view.onToggle = { animateTo(!expanded) }
         view.onUserInteraction = { if (expanded) scheduleCollapse() }
         touchView.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) view.onUserInteraction?.invoke()
-            if (event.action == MotionEvent.ACTION_UP) {
-                val visualX = event.x + touchParams.x - overlayLeft
-                val visualY = event.y + touchParams.y
-                view.handleTap(visualX, visualY)
-                touchView.performClick()
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    downOffset = verticalOffset
+                    dragging = false
+                    main.postDelayed(beginDrag, 450L)
+                    view.onUserInteraction?.invoke()
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (dragging) {
+                        verticalOffset = (downOffset + (event.rawY - downRawY).toInt()).coerceIn(0, maxVerticalOffset)
+                        view.verticalOffset = verticalOffset.toFloat()
+                        updateTouchWindow(false)
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    main.removeCallbacks(beginDrag)
+                    if (dragging) {
+                        CapsulePreferences.setVerticalOffsetDp(context, (verticalOffset / context.resources.displayMetrics.density).toInt())
+                        dragging = false
+                    } else {
+                        val dx = event.rawX - downRawX
+                        val dy = event.rawY - downRawY
+                        when {
+                            expanded && kotlin.math.abs(dx) > dp(48) && kotlin.math.abs(dx) > kotlin.math.abs(dy) -> {
+                                if (dx < 0) view.controls?.skipToNext() else view.controls?.skipToPrevious()
+                                scheduleCollapse()
+                            }
+                            expanded && dy < -dp(48) -> animateTo(false)
+                            else -> {
+                                val visualX = event.x + touchParams.x - overlayLeft
+                                val visualY = event.y + touchParams.y
+                                view.handleTap(visualX, visualY)
+                            }
+                        }
+                        touchView.performClick()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    main.removeCallbacks(beginDrag)
+                    dragging = false
+                }
             }
             true
         }
@@ -86,13 +136,21 @@ class OverlayController(
     ).apply {
         gravity = Gravity.TOP or Gravity.START
         x = geometry.camera.centerX() - dp(26)
-        y = geometry.camera.centerY() - dp(26)
+        y = geometry.camera.centerY() + verticalOffset - dp(26)
     }
 
     fun update(state: MusicState, controls: MediaController.TransportControls) {
         view.music = state
         view.controls = controls
         if (state.playing) view.startPulse() else view.stopPulse()
+    }
+
+    fun updateTimer(timer: TimerState?) { view.timer = timer }
+
+    fun applyVerticalOffsetDp(value: Int) {
+        verticalOffset = dp(value).coerceIn(0, maxVerticalOffset)
+        view.verticalOffset = verticalOffset.toFloat()
+        updateTouchWindow(expanded)
     }
 
     fun show() {
@@ -111,6 +169,7 @@ class OverlayController(
 
     fun hide() {
         main.removeCallbacks(collapseAfterTouch)
+        main.removeCallbacks(beginDrag)
         animator?.cancel()
         animator = null
         if (attached) {
@@ -155,7 +214,7 @@ class OverlayController(
 
     private fun scheduleCollapse() {
         main.removeCallbacks(collapseAfterTouch)
-        main.postDelayed(collapseAfterTouch, 2_000L)
+        main.postDelayed(collapseAfterTouch, CapsulePreferences.collapseDelayMs(context))
     }
 
     private fun updateTouchWindow(open: Boolean) {
@@ -164,24 +223,24 @@ class OverlayController(
             touchParams.width = overlayWidth
             touchParams.height = dp(100)
             touchParams.x = overlayLeft
-            touchParams.y = geometry.statusBarBottom + dp(4)
+            touchParams.y = geometry.statusBarBottom + dp(4) + verticalOffset
         } else {
             touchParams.width = dp(52)
             touchParams.height = dp(52)
             touchParams.x = geometry.camera.centerX() - dp(26)
-            touchParams.y = geometry.camera.centerY() - dp(26)
+            touchParams.y = geometry.camera.centerY() + verticalOffset - dp(26)
         }
         runCatching { wm.updateViewLayout(touchView, touchParams) }
     }
 
-    private data class Geometry(val screenWidth: Int, val camera: Rect, val statusBarBottom: Int)
+    private data class Geometry(val screenWidth: Int, val screenHeight: Int, val camera: Rect, val statusBarBottom: Int)
 
     private fun readGeometry(): Geometry {
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         wm.defaultDisplay.getRealMetrics(metrics)
         val fallback = Rect(metrics.widthPixels / 2 - dp(7), dp(8), metrics.widthPixels / 2 + dp(7), dp(22))
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return Geometry(metrics.widthPixels, fallback, dp(32))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return Geometry(metrics.widthPixels, metrics.heightPixels, fallback, dp(32))
         val windowMetrics = wm.currentWindowMetrics
         val camera = windowMetrics.windowInsets.displayCutout?.boundingRects.orEmpty()
             .filter { it.top <= dp(32) }
@@ -190,7 +249,7 @@ class OverlayController(
         val statusBottom = windowMetrics.windowInsets
             .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
             .coerceAtLeast(camera.bottom)
-        return Geometry(windowMetrics.bounds.width(), camera, statusBottom)
+        return Geometry(windowMetrics.bounds.width(), windowMetrics.bounds.height(), camera, statusBottom)
     }
 
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
