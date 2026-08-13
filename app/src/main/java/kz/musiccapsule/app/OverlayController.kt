@@ -15,7 +15,10 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.PathInterpolator
 
-class OverlayController(private val context: Context) {
+class OverlayController(
+    private val context: Context,
+    private val windowType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+) {
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
     private val screenWidth: Int
@@ -51,7 +54,7 @@ class OverlayController(private val context: Context) {
         WindowManager.LayoutParams(
             collapsedWidth,
             collapsedHeight,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            windowType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
@@ -69,7 +72,9 @@ class OverlayController(private val context: Context) {
     }
 
     fun show() {
-        if (!Settings.canDrawOverlays(context)) return
+        if (windowType == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY &&
+            !Settings.canDrawOverlays(context)
+        ) return
         if (!attached) {
             resetCollapsedGeometry()
             runCatching { wm.addView(view, params) }.onSuccess {

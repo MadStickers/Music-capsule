@@ -23,10 +23,11 @@ git push -u origin main
 
 ## First launch
 
-Grant both requested permissions in this order:
+Grant the requested permissions in this order:
 
 1. Display over other apps.
 2. Notification access (needed by Android to expose active MediaSession controllers).
+3. Enable the Music Capsule accessibility service. It is used only to place a clickable overlay above the status bar; it cannot retrieve window content.
 
 Start playback in any properly implemented Android media player. A small pulsing dot appears beside the real camera cutout. Tap it and the capsule moves below the status bar while expanding equally to both sides. The capsule folds back two seconds after the last touch. When playback is paused, it disappears after five seconds.
 
@@ -34,4 +35,4 @@ Start playback in any properly implemented Android media player. A small pulsing
 
 - Some Samsung firmware may require disabling battery optimization for Music Capsule if the listener is stopped in the background.
 - Players that do not publish a MediaSession cannot be controlled by third-party apps.
-- The debug APK is signed automatically by the Android debug key and is suitable for direct installation/testing.
+- Builds use the repository's fixed development key so later GitHub Actions APKs can update version 4 and newer in place. The bundled key is for personal testing, not Play Store distribution.

@@ -15,9 +15,13 @@ class MusicListenerService : NotificationListenerService() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var sessions: MediaSessionManager
     private var controller: MediaController? = null
-    private var overlay: OverlayController? = null
+    private var lastPlaying = false
+    private var pauseHideScheduled = false
 
-    private val hideAfterPause = Runnable { overlay?.hide() }
+    private val hideAfterPause = Runnable {
+        pauseHideScheduled = false
+        MusicOverlayBridge.hide()
+    }
     private val progressTick = object : Runnable {
         override fun run() {
             publishState()
@@ -36,7 +40,6 @@ class MusicListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         sessions = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
-        overlay = OverlayController(this)
         sessions.addOnActiveSessionsChangedListener(sessionListener, ComponentName(this, javaClass))
         chooseSession()
         main.post(progressTick)
@@ -46,8 +49,7 @@ class MusicListenerService : NotificationListenerService() {
         controller?.unregisterCallback(controllerCallback)
         if (::sessions.isInitialized) sessions.removeOnActiveSessionsChangedListener(sessionListener)
         main.removeCallbacksAndMessages(null)
-        overlay?.destroy()
-        overlay = null
+        MusicOverlayBridge.hide()
         super.onListenerDisconnected()
     }
 
@@ -66,7 +68,13 @@ class MusicListenerService : NotificationListenerService() {
     }
 
     private fun publishState() {
-        val current = controller ?: return overlay?.hide() ?: Unit
+        val current = controller ?: run {
+            main.removeCallbacks(hideAfterPause)
+            pauseHideScheduled = false
+            lastPlaying = false
+            MusicOverlayBridge.hide()
+            return
+        }
         val metadata = current.metadata
         val playback = current.playbackState
         val isPlaying = playback?.state == PlaybackState.STATE_PLAYING
@@ -85,12 +93,15 @@ class MusicListenerService : NotificationListenerService() {
             duration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L,
             playing = isPlaying
         )
-        overlay?.update(state, current.transportControls)
-        main.removeCallbacks(hideAfterPause)
+        MusicOverlayBridge.update(state, current.transportControls)
         if (isPlaying) {
-            overlay?.show()
-        } else {
+            main.removeCallbacks(hideAfterPause)
+            pauseHideScheduled = false
+            MusicOverlayBridge.show()
+        } else if (lastPlaying && !pauseHideScheduled) {
+            pauseHideScheduled = true
             main.postDelayed(hideAfterPause, 5_000L)
         }
+        lastPlaying = isPlaying
     }
 }

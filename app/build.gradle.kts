@@ -7,15 +7,29 @@ android {
     namespace = "kz.musiccapsule.app"
     compileSdk = 35
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("music-capsule-debug.jks")
+            storePassword = "musiccapsule"
+            keyAlias = "music-capsule"
+            keyPassword = "musiccapsule"
+        }
+    }
+
     defaultConfig {
         applicationId = "kz.musiccapsule.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.0.0"
+        versionCode = 4
+        versionName = "4.0.0"
+
+        signingConfig = signingConfigs.getByName("debug")
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

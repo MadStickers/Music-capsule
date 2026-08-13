@@ -42,7 +42,11 @@ class CapsuleView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         setLayerType(LAYER_TYPE_SOFTWARE, paint)
-        if (reveal >= .02f) {
+        if (reveal < .02f) {
+            // Only a subtle camera-sized mask; the whole View remains a large touch target.
+            paint.color = Color.BLACK
+            canvas.drawCircle(width / 2f, cameraCenterY, dp(7f), paint)
+        } else {
             paint.color = Color.BLACK
             paint.setShadowLayer(dp(12f), 0f, dp(4f), 0x70000000)
             val radius = minOf(dp(28f), height / 2f)
@@ -59,12 +63,12 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun drawPulseDot(canvas: Canvas) {
-        val cx = width / 2f + dp(13f)
+        val cx = width / 2f + dp(12f)
         val cy = cameraCenterY
         paint.color = 0x408F7CFF
-        canvas.drawCircle(cx, cy, dp(3.4f) + dp(2.2f) * pulse, paint)
+        canvas.drawCircle(cx, cy, dp(2.8f) + dp(1.8f) * pulse, paint)
         paint.color = 0xFF9B8AFF.toInt()
-        canvas.drawCircle(cx, cy, dp(1.8f) + dp(.6f) * pulse, paint)
+        canvas.drawCircle(cx, cy, dp(1.5f) + dp(.5f) * pulse, paint)
     }
 
     private fun drawExpandedContent(canvas: Canvas) {
