@@ -11,6 +11,8 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.content.pm.PackageManager
+import java.security.MessageDigest
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
@@ -132,6 +134,16 @@ class MainActivity : AppCompatActivity() {
         root.addView(sectionTitle("Подсказка"))
         root.addView(infoCard("В режиме жестов: свайп влево или вправо переключает трек, свайп вверх сворачивает остров. Долгое удержание компактного острова включает перемещение."))
 
+        root.addView(sectionTitle("Безопасность"))
+        root.addView(settingCard("Сертификат установленного APK", "Сверяйте этот SHA-256 с отпечатком в шаге Verify signature and certificate на GitHub Actions.") {
+            addView(TextView(this@MainActivity).apply {
+                text = signingCertificateSha256()
+                textSize = 12f
+                typeface = android.graphics.Typeface.MONOSPACE
+                setTextIsSelectable(true)
+            }, wrapMatch().apply { topMargin = dp(8) })
+        })
+
         return ScrollView(this).apply { isFillViewport = true; addView(root) }
     }
 
@@ -167,6 +179,18 @@ class MainActivity : AppCompatActivity() {
     private fun status(enabled: Boolean) = if (enabled) "● Включено" else "○ Требуется доступ"
     private fun isListenerEnabled() = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")?.contains(packageName) == true
     private fun isAccessibilityEnabled() = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)?.contains("$packageName/${CapsuleAccessibilityService::class.java.name}") == true
+    @Suppress("DEPRECATION")
+    private fun signingCertificateSha256(): String = runCatching {
+        val info = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                .signingInfo?.apkContentsSigners?.firstOrNull()
+        } else {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+                .signatures?.firstOrNull()
+        } ?: return@runCatching "Сертификат недоступен"
+        MessageDigest.getInstance("SHA-256").digest(info.toByteArray())
+            .joinToString(":") { "%02X".format(it) }
+    }.getOrElse { "Не удалось прочитать сертификат" }
     private fun matchWrap(height: Int) = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
     private fun wrapMatch() = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()

@@ -4,3 +4,8 @@ local.properties
 **/build/
 *.iml
 captures/
+*.jks
+*.keystore
+keystore.properties
+signing.env
+signing-backup/

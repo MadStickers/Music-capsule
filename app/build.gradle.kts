@@ -7,12 +7,19 @@ android {
     namespace = "kz.musiccapsule.app"
     compileSdk = 35
 
+    val releaseStoreFile = providers.gradleProperty("MUSIC_CAPSULE_STORE_FILE")
+    val releaseStorePassword = providers.gradleProperty("MUSIC_CAPSULE_STORE_PASSWORD")
+    val releaseKeyAlias = providers.gradleProperty("MUSIC_CAPSULE_KEY_ALIAS")
+    val releaseKeyPassword = providers.gradleProperty("MUSIC_CAPSULE_KEY_PASSWORD")
+
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("music-capsule-debug.jks")
-            storePassword = "musiccapsule"
-            keyAlias = "music-capsule"
-            keyPassword = "musiccapsule"
+        create("secureRelease") {
+            if (releaseStoreFile.isPresent) {
+                storeFile = rootProject.file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.orNull
+                keyAlias = releaseKeyAlias.orNull
+                keyPassword = releaseKeyPassword.orNull
+            }
         }
     }
 
@@ -20,17 +27,13 @@ android {
         applicationId = "kz.musiccapsule.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "11.0.0"
-
-        signingConfig = signingConfigs.getByName("debug")
+        versionCode = 12
+        versionName = "12.0.0"
     }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("debug")
-        }
         release {
+            signingConfig = signingConfigs.getByName("secureRelease")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

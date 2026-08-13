@@ -33,6 +33,10 @@ Start playback in any properly implemented Android media player. A small pulsing
 
 Version 11 focuses only on music. It adds adaptive Material 3 settings and three control modes: gestures with Play/Pause, full playback buttons, or display-only system control. It also keeps saved vertical position, configurable auto-collapse, swipe-up collapse, and long-press dragging.
 
+## Secure signing (version 12+)
+
+The private signing key is never stored in this repository. Before the first v12 build, run `setup-secure-signing-termux.sh` once from the repository in Termux. It creates the key locally, stores GitHub Actions secrets, and leaves a private backup at `~/MusicCapsule-signing-backup`. Keep an offline copy of that directory. Every Actions build verifies the resulting APK certificate before publishing the artifact.
+
 ## Notes
 
 - Some Samsung firmware may require disabling battery optimization for Music Capsule if the listener is stopped in the background.

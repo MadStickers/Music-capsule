@@ -1,4 +1,4 @@
-name: Build Music Capsule APK
+name: Build signed Music Capsule APK
 
 on:
   workflow_dispatch:
@@ -18,15 +18,43 @@ jobs:
           java-version: '17'
           cache: gradle
       - uses: android-actions/setup-android@v3
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses >/dev/null || true
       - name: Install Android SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Restore private signing key
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
+        run: |
+          test -n "$SIGNING_KEY_BASE64" || { echo "Missing SIGNING_KEY_BASE64 secret"; exit 1; }
+          mkdir -p signing
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > signing/release.jks
+          chmod 600 signing/release.jks
+      - name: Build signed release APK
+        env:
+          ORG_GRADLE_PROJECT_MUSIC_CAPSULE_STORE_FILE: signing/release.jks
+          ORG_GRADLE_PROJECT_MUSIC_CAPSULE_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_MUSIC_CAPSULE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_MUSIC_CAPSULE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$ORG_GRADLE_PROJECT_MUSIC_CAPSULE_STORE_PASSWORD" || { echo "Missing KEYSTORE_PASSWORD secret"; exit 1; }
+          test -n "$ORG_GRADLE_PROJECT_MUSIC_CAPSULE_KEY_ALIAS" || { echo "Missing KEY_ALIAS secret"; exit 1; }
+          test -n "$ORG_GRADLE_PROJECT_MUSIC_CAPSULE_KEY_PASSWORD" || { echo "Missing KEY_PASSWORD secret"; exit 1; }
+          ./gradlew --no-daemon assembleRelease
+      - name: Verify signature and certificate
+        env:
+          EXPECTED_CERT_SHA256: ${{ secrets.SIGNING_CERT_SHA256 }}
+        run: |
+          APK="app/build/outputs/apk/release/app-release.apk"
+          apksigner verify --verbose "$APK"
+          ACTUAL="$(apksigner verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]')"
+          test -n "$EXPECTED_CERT_SHA256" || { echo "Missing SIGNING_CERT_SHA256 secret"; exit 1; }
+          test "$ACTUAL" = "$EXPECTED_CERT_SHA256" || { echo "Signing certificate mismatch"; exit 1; }
+          echo "Verified release certificate: $ACTUAL"
       - uses: actions/upload-artifact@v4
         with:
-          name: Music-Capsule-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Music-Capsule-v12-signed-apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Remove signing material
+        if: always()
+        run: rm -rf -- signing
