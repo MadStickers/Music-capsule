@@ -16,7 +16,6 @@ class MusicListenerService : NotificationListenerService() {
     private lateinit var sessions: MediaSessionManager
     private var controller: MediaController? = null
     private var overlay: OverlayController? = null
-    private var wasPlaying = false
 
     private val hideAfterPause = Runnable { overlay?.hide() }
     private val progressTick = object : Runnable {
@@ -61,7 +60,6 @@ class MusicListenerService : NotificationListenerService() {
         if (next?.sessionToken != controller?.sessionToken) {
             controller?.unregisterCallback(controllerCallback)
             controller = next
-            wasPlaying = false
             controller?.registerCallback(controllerCallback, main)
         }
         publishState()
@@ -90,10 +88,9 @@ class MusicListenerService : NotificationListenerService() {
         overlay?.update(state, current.transportControls)
         main.removeCallbacks(hideAfterPause)
         if (isPlaying) {
-            overlay?.show(autoExpand = !wasPlaying)
+            overlay?.show()
         } else {
             main.postDelayed(hideAfterPause, 5_000L)
         }
-        wasPlaying = isPlaying
     }
 }
