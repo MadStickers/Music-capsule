@@ -21,6 +21,7 @@ class CapsuleView(context: Context) : View(context) {
     var controls: MediaController.TransportControls? = null
     var expanded = false; set(value) { field = value; invalidate() }
     var reveal = 0f; set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+    var cameraCenterY = dp(18f); set(value) { field = value; invalidate() }
     var onToggle: (() -> Unit)? = null
     var onUserInteraction: (() -> Unit)? = null
 
@@ -40,16 +41,14 @@ class CapsuleView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        paint.color = Color.BLACK
-        paint.setShadowLayer(dp(12f), 0f, dp(4f), 0x70000000)
         setLayerType(LAYER_TYPE_SOFTWARE, paint)
-        if (reveal < .02f) {
-            canvas.drawCircle(width / 2f, minOf(height / 2f, dp(24f)), dp(15f), paint)
-        } else {
+        if (reveal >= .02f) {
+            paint.color = Color.BLACK
+            paint.setShadowLayer(dp(12f), 0f, dp(4f), 0x70000000)
             val radius = minOf(dp(28f), height / 2f)
             canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), radius, radius, paint)
+            paint.clearShadowLayer()
         }
-        paint.clearShadowLayer()
         if (reveal < .82f) drawPulseDot(canvas)
         if (reveal > .08f) {
             val alpha = ((reveal - .08f) / .92f).coerceIn(0f, 1f)
@@ -60,12 +59,12 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun drawPulseDot(canvas: Canvas) {
-        val cx = width / 2f + dp(24f)
-        val cy = minOf(height / 2f, dp(24f))
+        val cx = width / 2f + dp(13f)
+        val cy = cameraCenterY
         paint.color = 0x408F7CFF
-        canvas.drawCircle(cx, cy, dp(5f) + dp(4f) * pulse, paint)
+        canvas.drawCircle(cx, cy, dp(3.4f) + dp(2.2f) * pulse, paint)
         paint.color = 0xFF9B8AFF.toInt()
-        canvas.drawCircle(cx, cy, dp(3.2f) + dp(1.2f) * pulse, paint)
+        canvas.drawCircle(cx, cy, dp(1.8f) + dp(.6f) * pulse, paint)
     }
 
     private fun drawExpandedContent(canvas: Canvas) {
@@ -73,7 +72,7 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun drawArtwork(canvas: Canvas) {
-        val left = dp(12f); val top = dp(49f); val size = dp(48f)
+        val left = dp(12f); val top = dp(10f); val size = dp(58f)
         val rect = RectF(left, top, left + size, top + size)
         val path = Path().apply { addRoundRect(rect, dp(13f), dp(13f), Path.Direction.CW) }
         canvas.save(); canvas.clipPath(path)
@@ -85,15 +84,15 @@ class CapsuleView(context: Context) : View(context) {
     }
 
     private fun drawLabels(canvas: Canvas) {
-        val x = dp(70f); val maxWidth = max(0f, width - dp(206f))
+        val x = dp(80f); val maxWidth = max(0f, width - dp(216f))
         boldPaint.color = Color.WHITE; boldPaint.textSize = dp(14f)
         textPaint.color = 0xFFA3A3B1.toInt(); textPaint.textSize = dp(11.5f)
-        canvas.drawText(ellipsize(music.title, boldPaint, maxWidth), x, dp(70f), boldPaint)
-        canvas.drawText(ellipsize(music.artist.ifBlank { "Сейчас играет" }, textPaint, maxWidth), x, dp(89f), textPaint)
+        canvas.drawText(ellipsize(music.title, boldPaint, maxWidth), x, dp(35f), boldPaint)
+        canvas.drawText(ellipsize(music.artist.ifBlank { "Сейчас играет" }, textPaint, maxWidth), x, dp(55f), textPaint)
     }
 
     private fun drawButtons(canvas: Canvas) {
-        val cy = dp(73f); val nextX = width - dp(24f); val playX = width - dp(67f); val prevX = width - dp(110f)
+        val cy = dp(39f); val nextX = width - dp(24f); val playX = width - dp(67f); val prevX = width - dp(110f)
         drawPrevious(canvas, prevX, cy)
         if (music.playing) drawPause(canvas, playX, cy) else drawPlay(canvas, playX, cy)
         drawNext(canvas, nextX, cy)
@@ -117,9 +116,9 @@ class CapsuleView(context: Context) : View(context) {
                     val ratio = ((event.x - dp(16f)) / (width - dp(32f))).coerceIn(0f, 1f)
                     controls?.seekTo((music.duration * ratio).toLong())
                 }
-                event.y in dp(48f)..dp(101f) && event.x > width - dp(45f) -> controls?.skipToNext()
-                event.y in dp(48f)..dp(101f) && event.x > width - dp(89f) -> if (music.playing) controls?.pause() else controls?.play()
-                event.y in dp(48f)..dp(101f) && event.x > width - dp(132f) -> controls?.skipToPrevious()
+                event.y < dp(76f) && event.x > width - dp(45f) -> controls?.skipToNext()
+                event.y < dp(76f) && event.x > width - dp(89f) -> if (music.playing) controls?.pause() else controls?.play()
+                event.y < dp(76f) && event.x > width - dp(132f) -> controls?.skipToPrevious()
                 else -> onToggle?.invoke()
             }
         } else onToggle?.invoke()

@@ -11,6 +11,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.PathInterpolator
 
@@ -19,11 +20,13 @@ class OverlayController(private val context: Context) {
     private val main = Handler(Looper.getMainLooper())
     private val screenWidth: Int
     private val cameraCenterX: Int
+    private val cameraCenterY: Int
     private val cameraTop: Int
+    private val expandedY: Int
     private val collapsedWidth = dp(78)
     private val collapsedHeight: Int
     private val expandedWidth: Int
-    private val expandedHeight = dp(116)
+    private val expandedHeight = dp(96)
     private val view = CapsuleView(context)
     private var attached = false
     private var expanded = false
@@ -32,11 +35,14 @@ class OverlayController(private val context: Context) {
 
     init {
         val geometry = readCutoutGeometry()
-        screenWidth = geometry.first
-        cameraCenterX = geometry.second.centerX()
-        cameraTop = geometry.second.top.coerceAtLeast(0)
-        collapsedHeight = maxOf(dp(48), geometry.second.height() + dp(12))
+        screenWidth = geometry.screenWidth
+        cameraCenterX = geometry.camera.centerX()
+        cameraCenterY = geometry.camera.centerY()
+        cameraTop = geometry.camera.top.coerceAtLeast(0)
+        expandedY = geometry.statusBarBottom + dp(4)
+        collapsedHeight = maxOf(dp(36), geometry.camera.height() + dp(8))
         expandedWidth = minOf(dp(352), screenWidth - dp(12))
+        view.cameraCenterY = (cameraCenterY - cameraTop).toFloat()
         view.onToggle = { if (expanded) animateTo(false) else animateTo(true) }
         view.onUserInteraction = { if (expanded) scheduleCollapse() }
     }
@@ -93,8 +99,10 @@ class OverlayController(private val context: Context) {
         animator?.cancel()
         val startWidth = params.width
         val startHeight = params.height
+        val startY = params.y
         val endWidth = if (open) expandedWidth else collapsedWidth
         val endHeight = if (open) expandedHeight else collapsedHeight
+        val endY = if (open) expandedY else cameraTop
         expanded = open
         view.expanded = open
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -107,7 +115,8 @@ class OverlayController(private val context: Context) {
                 params.width = width
                 params.height = height
                 params.x = cameraCenterX - width / 2
-                params.y = cameraTop
+                params.y = lerp(startY, endY, t)
+                view.cameraCenterY = (cameraCenterY - params.y).toFloat()
                 view.reveal = (width - collapsedWidth).toFloat() /
                     (expandedWidth - collapsedWidth).coerceAtLeast(1)
                 runCatching { wm.updateViewLayout(view, params) }
@@ -130,20 +139,26 @@ class OverlayController(private val context: Context) {
         params.height = collapsedHeight
         params.x = cameraCenterX - collapsedWidth / 2
         params.y = cameraTop
+        view.cameraCenterY = (cameraCenterY - cameraTop).toFloat()
     }
 
-    private fun readCutoutGeometry(): Pair<Int, Rect> {
+    private data class ScreenGeometry(val screenWidth: Int, val camera: Rect, val statusBarBottom: Int)
+
+    private fun readCutoutGeometry(): ScreenGeometry {
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         wm.defaultDisplay.getRealMetrics(metrics)
         val fallback = Rect(metrics.widthPixels / 2 - dp(14), 0, metrics.widthPixels / 2 + dp(14), dp(38))
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return metrics.widthPixels to fallback
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return ScreenGeometry(metrics.widthPixels, fallback, dp(32))
         val windowMetrics = wm.currentWindowMetrics
         val cutouts = windowMetrics.windowInsets.displayCutout?.boundingRects.orEmpty()
         val centered = cutouts.filter { it.top <= dp(32) }
             .minByOrNull { kotlin.math.abs(it.centerX() - windowMetrics.bounds.centerX()) }
             ?: fallback
-        return windowMetrics.bounds.width() to centered
+        val statusBarBottom = windowMetrics.windowInsets
+            .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
+            .coerceAtLeast(centered.bottom)
+        return ScreenGeometry(windowMetrics.bounds.width(), centered, statusBarBottom)
     }
 
     private fun ValueAnimator.doOnEnd(block: () -> Unit) {

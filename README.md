@@ -28,7 +28,7 @@ Grant both requested permissions in this order:
 1. Display over other apps.
 2. Notification access (needed by Android to expose active MediaSession controllers).
 
-Start playback in any properly implemented Android media player. A pulsing dot appears beside the centred camera. Tap it to expand the capsule equally to both sides and downward. The capsule folds back two seconds after the last touch. When playback is paused, it disappears after five seconds.
+Start playback in any properly implemented Android media player. A small pulsing dot appears beside the real camera cutout. Tap it and the capsule moves below the status bar while expanding equally to both sides. The capsule folds back two seconds after the last touch. When playback is paused, it disappears after five seconds.
 
 ## Notes
 
